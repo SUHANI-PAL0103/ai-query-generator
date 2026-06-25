@@ -5,6 +5,7 @@
 
 # Backend configuration with credentials
 backend/ai-query-generator/src/main/resources/application.properties
+backend/ai-query-generator/src/main/resources/application.properties.example
 
 # Dependencies
 node_modules/
