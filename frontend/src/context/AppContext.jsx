@@ -70,6 +70,10 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     const loadSchema = async () => {
+      if (!state.dbConnection) {
+        // User hasn't connected their database yet; skip schema fetch
+        return;
+      }
       try {
         // Backend schema endpoint added by this project: GET /api/db/schema
         const res = await fetch('/api/db/schema');
@@ -87,6 +91,7 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     const loadHistory = async () => {
+      if (!state.dbConnection) return;
       try {
         const res = await fetch('/api/query/history');
         if (!res.ok) return;
