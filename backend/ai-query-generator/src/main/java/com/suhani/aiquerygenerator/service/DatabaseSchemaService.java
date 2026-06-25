@@ -3,6 +3,7 @@ package com.suhani.aiquerygenerator.service;
 import com.suhani.aiquerygenerator.dto.DbSchemaColumn;
 import com.suhani.aiquerygenerator.dto.DbSchemaForeignKey;
 import com.suhani.aiquerygenerator.dto.DbSchemaTable;
+import com.suhani.aiquerygenerator.util.DynamicJdbcTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,16 +17,20 @@ public class DatabaseSchemaService {
 
     private static final Logger logger = LoggerFactory.getLogger(DatabaseSchemaService.class);
 
-    private final JdbcTemplate jdbcTemplate;
+    private final DynamicJdbcTemplate dynamicJdbcTemplate;
 
-    public DatabaseSchemaService(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public DatabaseSchemaService(DynamicJdbcTemplate dynamicJdbcTemplate) {
+        this.dynamicJdbcTemplate = dynamicJdbcTemplate;
     }
 
     public List<DbSchemaTable> getSchema() {
+        JdbcTemplate jt = dynamicJdbcTemplate.create();
+        if (jt == null) {
+            throw new RuntimeException("No database connection available. Please connect your database first.");
+        }
+
         try {
-            // Tables
-            List<String> tables = jdbcTemplate.query(
+            List<String> tables = jt.query(
                     "SELECT table_name " +
                             "FROM information_schema.tables " +
                             "WHERE table_schema = 'public' " +
@@ -38,7 +43,7 @@ public class DatabaseSchemaService {
 
             Map<String, List<DbSchemaColumn>> columnsByTable = new HashMap<>();
             for (String table : tables) {
-                List<DbSchemaColumn> cols = jdbcTemplate.query(
+                List<DbSchemaColumn> cols = jt.query(
                         "SELECT c.column_name, c.data_type, " +
                                 "       (" +
                                 "         SELECT COUNT(*) " +
@@ -63,8 +68,7 @@ public class DatabaseSchemaService {
                 columnsByTable.put(table, cols);
             }
 
-            // Foreign keys
-            Map<String, List<DbSchemaForeignKey>> fksByTable = fetchForeignKeys();
+            Map<String, List<DbSchemaForeignKey>> fksByTable = fetchForeignKeys(jt);
 
             List<DbSchemaTable> result = tables.stream()
                     .map(t -> DbSchemaTable.builder()
@@ -83,9 +87,9 @@ public class DatabaseSchemaService {
         }
     }
 
-    private Map<String, List<DbSchemaForeignKey>> fetchForeignKeys() {
+    private Map<String, List<DbSchemaForeignKey>> fetchForeignKeys(JdbcTemplate jt) {
         try {
-            List<Map<String, Object>> fkRows = jdbcTemplate.queryForList(
+            List<Map<String, Object>> fkRows = jt.queryForList(
                     "SELECT " +
                             "  kcu.table_name AS table_name, " +
                             "  kcu.column_name AS column_name, " +

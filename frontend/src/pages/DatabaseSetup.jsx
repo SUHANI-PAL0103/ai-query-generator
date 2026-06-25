@@ -7,8 +7,8 @@ import { Database, CheckCircle, XCircle, Loader2, Server } from 'lucide-react';
 export default function DatabaseSetup({ onConnected }) {
   const { user } = useUser();
   const { dispatch } = useApp();
-  const [host, setHost] = useState('localhost');
-  const [port, setPort] = useState('5432');
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('');
   const [database, setDatabase] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -86,7 +86,7 @@ export default function DatabaseSetup({ onConnected }) {
                   type="text"
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
-                  placeholder="localhost"
+                  placeholder="e.g. localhost or db.example.com"
                   className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
                 />
               </div>
@@ -96,6 +96,7 @@ export default function DatabaseSetup({ onConnected }) {
                   type="text"
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
+                  placeholder="e.g. 5432"
                   className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
                 />
               </div>
@@ -107,7 +108,7 @@ export default function DatabaseSetup({ onConnected }) {
                 type="text"
                 value={database}
                 onChange={(e) => setDatabase(e.target.value)}
-                placeholder="ai_sql_assistant"
+                placeholder="e.g. my_database"
                 className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
               />
             </div>
@@ -118,7 +119,7 @@ export default function DatabaseSetup({ onConnected }) {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="postgres"
+                placeholder="e.g. postgres"
                 className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
               />
             </div>
@@ -129,7 +130,7 @@ export default function DatabaseSetup({ onConnected }) {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
+                placeholder="Enter database password"
                 className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
               />
             </div>
@@ -172,7 +173,7 @@ export default function DatabaseSetup({ onConnected }) {
           </div>
 
           <p className="mt-6 text-xs text-center text-gray-400 dark:text-gray-500">
-            Your credentials are stored locally and sent only to your database
+            Enter your own PostgreSQL database credentials. These are sent securely to your database only.
           </p>
         </div>
       </div>
