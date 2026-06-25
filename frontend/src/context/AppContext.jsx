@@ -14,6 +14,7 @@ const initialState = {
 
   generatedQueries: [],
   isLoading: false,
+  isAdmin: false,
   dbConnection: JSON.parse(localStorage.getItem('dbConnection') || 'null'),
 };
 
@@ -53,6 +54,8 @@ function appReducer(state, action) {
       localStorage.setItem('queryHistory', '[]');
       return { ...state, queryHistory: [] };
     }
+    case 'SET_IS_ADMIN':
+      return { ...state, isAdmin: action.payload };
     case 'SET_DB_CONNECTION': {
       localStorage.setItem('dbConnection', JSON.stringify(action.payload));
       return { ...state, dbConnection: action.payload };

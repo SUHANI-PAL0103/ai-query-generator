@@ -73,12 +73,16 @@ function AppContent() {
           localStorage.setItem('clerkUserName', user.fullName || '');
         }
       });
-      // Register user silently
+      // Register user silently and check admin status
       queryService.registerUser({
         clerkId: user.id,
         email: user.primaryEmailAddress?.emailAddress,
         name: user.fullName,
         imageUrl: user.imageUrl
+      }).then((res) => {
+        if (res && res.isAdmin !== undefined) {
+          dispatch({ type: 'SET_IS_ADMIN', payload: res.isAdmin });
+        }
       }).catch(() => {});
     }
   }, [isLoaded, isSignedIn, user]);

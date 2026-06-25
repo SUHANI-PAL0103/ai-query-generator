@@ -14,19 +14,19 @@ import {
   Shield,
 } from 'lucide-react';
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/query-generator', label: 'Query Generator', icon: Sparkles },
-  { path: '/history', label: 'Query History', icon: History },
-  { path: '/schema', label: 'Database Schema', icon: Database },
-  { path: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { path: '/settings', label: 'Settings', icon: Settings },
-  { path: '/admin', label: 'Admin Panel', icon: Shield },
-];
-
 export default function Sidebar() {
   const { state, dispatch } = useApp();
-  const { sidebarOpen } = state;
+  const { sidebarOpen, isAdmin } = state;
+
+  const navItems = [
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/query-generator', label: 'Query Generator', icon: Sparkles },
+    { path: '/history', label: 'Query History', icon: History },
+    { path: '/schema', label: 'Database Schema', icon: Database },
+    { path: '/analytics', label: 'Analytics', icon: BarChart3 },
+    { path: '/settings', label: 'Settings', icon: Settings },
+    ...(isAdmin ? [{ path: '/admin', label: 'Admin Panel', icon: Shield }] : []),
+  ];
 
   return (
     <motion.aside
