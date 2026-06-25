@@ -1,0 +1,9 @@
+# MongoDB Configuration
+# Replace with your actual MongoDB credentials
+spring.data.mongodb.uri=mongodb+srv://<username>:<password>@<cluster-url>/<database-name>?retryWrites=true&w=majority
+
+# HuggingFace API Configuration (optional - for AI features)
+huggingface.api.key=<your-api-key-here>
+
+# Server Port (optional)
+server.port=8080

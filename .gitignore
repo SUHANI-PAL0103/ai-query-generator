@@ -3,6 +3,9 @@
 .env
 .env.*.local
 
+# Backend configuration with credentials
+backend/ai-query-generator/src/main/resources/application.properties
+
 # Dependencies
 node_modules/
 frontend/node_modules/
