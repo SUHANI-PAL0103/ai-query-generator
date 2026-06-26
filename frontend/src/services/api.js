@@ -21,8 +21,11 @@ const normalizeConnectionConfig = (connectionConfig = {}) => {
   const port = connectionConfig.port?.trim() || '5432';
   const database = connectionConfig.database?.trim() || 'ai_sql_assistant';
 
+  // Add sslmode=require for cloud databases like Neon, Aiven, etc.
+  const url = host ? `jdbc:postgresql://${host}:${port}/${database}?sslmode=require` : '';
+  
   return {
-    url: host ? `jdbc:postgresql://${host}:${port}/${database}` : '',
+    url: url,
     username: connectionConfig.username,
     password: connectionConfig.password,
   };
@@ -44,7 +47,7 @@ api.interceptors.request.use(
       // Add DB connection headers if stored
       const stored = JSON.parse(localStorage.getItem('dbConnection') || 'null');
       if (stored?.host && stored?.username && stored?.password) {
-        const url = `jdbc:postgresql://${stored.host}:${stored.port || '5432'}/${stored.database || 'ai_sql_assistant'}`;
+        const url = `jdbc:postgresql://${stored.host}:${stored.port || '5432'}/${stored.database || 'ai_sql_assistant'}?sslmode=require`;
         config.headers = {
           ...config.headers,
           'X-DB-Url': url,
