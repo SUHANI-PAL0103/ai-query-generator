@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class QueryHistoryResponse {
 
-    private Long id;
+    private String id;
     private String prompt;
     private String generatedSql;
     private String explanation;

@@ -7,7 +7,6 @@ import Dashboard from './pages/Dashboard';
 import QueryGenerator from './pages/QueryGenerator';
 import History from './pages/History';
 import Schema from './pages/Schema';
-import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import AdminPanel from './pages/AdminPanel';
 import DatabaseSetup from './pages/DatabaseSetup';
@@ -61,7 +60,8 @@ function AppContent() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { getToken } = useAuth();
   const { state, dispatch } = useApp();
-  const [dbConnected, setDbConnected] = useState(!!state.dbConnection);
+
+  const [dbConnected, setDbConnected] = useState(Boolean(state.dbConnection));
 
   useEffect(() => {
     if (isLoaded && isSignedIn && user) {
@@ -85,10 +85,10 @@ function AppContent() {
         }
       }).catch(() => {});
     }
-  }, [isLoaded, isSignedIn, user]);
+  }, [isLoaded, isSignedIn, user, dispatch]);
 
   useEffect(() => {
-    setDbConnected(!!state.dbConnection);
+    setDbConnected(Boolean(state.dbConnection));
   }, [state.dbConnection]);
 
   if (!isLoaded) return <AuthLoading />;
@@ -106,7 +106,6 @@ function AppContent() {
             <Route path="/query-generator" element={<QueryGenerator />} />
             <Route path="/history" element={<History />} />
             <Route path="/schema" element={<Schema />} />
-            <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/admin" element={<AdminPanel />} />
           </Routes>

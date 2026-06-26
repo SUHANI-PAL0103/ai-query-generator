@@ -16,6 +16,14 @@ export default function DatabaseSetup({ onConnected }) {
   const [testResult, setTestResult] = useState(null);
   const [error, setError] = useState('');
 
+  const buildConnection = () => ({
+    host: host.trim(),
+    port: port.trim() || '5432',
+    database: database.trim() || 'ai_sql_assistant',
+    username: username.trim(),
+    password,
+  });
+
   const handleTest = async () => {
     if (!host || !username || !password) {
       setError('Please fill in host, username, and password');
@@ -26,17 +34,12 @@ export default function DatabaseSetup({ onConnected }) {
     setTestResult(null);
 
     try {
-      const config = {
-        url: `jdbc:postgresql://${host}:${port}/${database || 'ai_sql_assistant'}`,
-        username,
-        password,
-      };
-      const result = await queryService.testDatabaseConnection(config);
+      const result = await queryService.testDatabaseConnection(buildConnection());
       setTestResult(result);
       if (result.success) {
         setError('');
       } else {
-        setError(result.message || 'Connection failed');
+        setError(result.message || result.data?.message || 'Connection failed');
       }
     } catch (err) {
       setTestResult({ success: false });
@@ -46,16 +49,31 @@ export default function DatabaseSetup({ onConnected }) {
     }
   };
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     if (!host || !username || !password) {
       setError('Please fill in host, username, and password');
       return;
     }
-    dispatch({
-      type: 'SET_DB_CONNECTION',
-      payload: { host, port, database: database || 'ai_sql_assistant', username, password }
-    });
-    onConnected();
+    setTesting(true);
+    setError('');
+    try {
+      const connection = buildConnection();
+      const result = await queryService.testDatabaseConnection(connection);
+      setTestResult(result);
+      if (!result.success) {
+        setError(result.message || result.data?.message || 'Connection failed');
+        return;
+      }
+      dispatch({
+        type: 'SET_DB_CONNECTION',
+        payload: connection
+      });
+      onConnected();
+    } catch (err) {
+      setError('Backend not reachable. Make sure backend is running.');
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (

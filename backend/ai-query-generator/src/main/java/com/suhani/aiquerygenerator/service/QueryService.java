@@ -40,13 +40,45 @@ public class QueryService {
         logger.info("Generating SQL for prompt: {}", prompt);
 
         // Step 1: AI call (NO transaction involved)
-        AiQueryResponse aiResponse = huggingFaceAIService.generateSql(prompt);
-
-        if (aiResponse == null || aiResponse.getSql() == null) {
-            throw new RuntimeException("AI returned null SQL response");
+        List<AiQueryResponse> aiResponses;
+        try {
+            aiResponses = huggingFaceAIService.generateSql(prompt);
+        } catch (Exception e) {
+            logger.error("AI service failed: {}", e.getMessage());
+            aiResponses = buildFallbackQueries(prompt);
+            if (aiResponses == null || aiResponses.isEmpty()) {
+                return GenerateQueryResponse.builder()
+                        .success(false)
+                        .generatedSql(null)
+                        .explanation("AI service is unavailable and no matching table was found in the connected database schema. Set HUGGINGFACE_API_KEY or try a prompt that mentions an existing table.")
+                        .tables(new ArrayList<>())
+                        .columns(new ArrayList<>())
+                        .estimatedRows(0)
+                        .queryType("UNKNOWN")
+                        .riskLevel("High")
+                        .build();
+            }
         }
 
-        String generatedSql = aiResponse.getSql();
+        if (aiResponses == null || aiResponses.isEmpty() || aiResponses.get(0).getSql() == null) {
+            return GenerateQueryResponse.builder()
+                    .success(false)
+                    .generatedSql(null)
+                    .explanation("AI service returned an empty response. Please try again.")
+                    .tables(new ArrayList<>())
+                    .columns(new ArrayList<>())
+                    .estimatedRows(0)
+                    .queryType("UNKNOWN")
+                    .riskLevel("High")
+                    .build();
+        }
+
+        // Select the best query based on confidence score
+        AiQueryResponse bestResponse = aiResponses.stream()
+                .max(Comparator.comparingDouble(r -> r.getConfidence() != null ? r.getConfidence() : 0.0))
+                .orElse(aiResponses.get(0));
+
+        String generatedSql = bestResponse.getSql();
 
         // Step 2: Analysis
         String queryType = queryAnalyzer.determineQueryType(generatedSql);
@@ -56,12 +88,12 @@ public class QueryService {
 
         String riskLevel = queryAnalyzer.assessRiskLevel(generatedSql);
 
-        List<String> tables = (aiResponse.getTables() != null && !aiResponse.getTables().isEmpty())
-                ? aiResponse.getTables()
+        List<String> tables = (bestResponse.getTables() != null && !bestResponse.getTables().isEmpty())
+                ? bestResponse.getTables()
                 : new ArrayList<>(queryAnalyzer.extractTables(generatedSql));
 
-        List<String> columns = (aiResponse.getColumns() != null && !aiResponse.getColumns().isEmpty())
-                ? aiResponse.getColumns()
+        List<String> columns = (bestResponse.getColumns() != null && !bestResponse.getColumns().isEmpty())
+                ? bestResponse.getColumns()
                 : new ArrayList<>(queryAnalyzer.extractColumns(generatedSql));
 
         // Validate the generated SQL against the real database
@@ -70,19 +102,79 @@ public class QueryService {
         }
 
         // Step 3: Save history safely (separate transaction)
-        saveHistorySafe(prompt, generatedSql, aiResponse.getExplanation(), queryType, riskLevel);
+        try {
+            saveHistorySafe(prompt, generatedSql, bestResponse.getExplanation(), queryType, riskLevel);
+        } catch (Exception e) {
+            logger.warn("Could not save query history: {}", e.getMessage());
+        }
 
         // Step 4: Response
         return GenerateQueryResponse.builder()
                 .success(true)
                 .generatedSql(generatedSql)
-                .explanation(aiResponse.getExplanation())
+                .explanation(bestResponse.getExplanation())
                 .tables(tables)
                 .columns(columns)
                 .estimatedRows(estimatedRows)
                 .queryType(queryType)
                 .riskLevel(riskLevel)
                 .build();
+    }
+
+    private List<AiQueryResponse> buildFallbackQueries(String prompt) {
+        List<String> tables = dbValidation.getRealTables();
+        if (tables.isEmpty()) {
+            return null;
+        }
+
+        String normalizedPrompt = prompt == null ? "" : prompt.toLowerCase(Locale.ROOT);
+        String selectedTable = tables.stream()
+                .filter(table -> promptMentionsTable(normalizedPrompt, table))
+                .findFirst()
+                .orElse(tables.size() == 1 ? tables.get(0) : null);
+
+        if (selectedTable == null) {
+            return null;
+        }
+
+        String quotedTable = quoteIdentifier(selectedTable);
+        String sql = normalizedPrompt.contains("count")
+                ? "SELECT COUNT(*) AS total FROM " + quotedTable
+                : "SELECT * FROM " + quotedTable + " LIMIT 100";
+
+        AiQueryResponse fallback = AiQueryResponse.builder()
+                .sql(sql)
+                .explanation("Generated from the connected database schema because the AI service was unavailable.")
+                .tables(List.of(selectedTable))
+                .columns(dbValidation.getRealColumns(selectedTable))
+                .confidence(0.6)
+                .build();
+
+        return List.of(fallback);
+    }
+
+    private String quoteIdentifier(String identifier) {
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
+    }
+
+    private boolean promptMentionsTable(String normalizedPrompt, String table) {
+        String normalizedTable = table.toLowerCase(Locale.ROOT);
+        String readableTable = normalizedTable.replace("_", " ");
+        String singularTable = singularize(readableTable);
+
+        return normalizedPrompt.contains(normalizedTable)
+                || normalizedPrompt.contains(readableTable)
+                || normalizedPrompt.contains(singularTable);
+    }
+
+    private String singularize(String value) {
+        if (value.endsWith("ies") && value.length() > 3) {
+            return value.substring(0, value.length() - 3) + "y";
+        }
+        if (value.endsWith("s") && value.length() > 1) {
+            return value.substring(0, value.length() - 1);
+        }
+        return value;
     }
 
     // ✅ ISOLATED TRANSACTION (FIX FOR ROLLBACK ISSUE)
@@ -121,11 +213,12 @@ public class QueryService {
     // ---------------- EXPLAIN ----------------
     public ExplainQueryResponse explainQuery(String sql) {
         try {
-            AiQueryResponse aiResponse =
+            List<AiQueryResponse> aiResponses =
                     huggingFaceAIService.generateSql("Explain this SQL: " + sql);
+            AiQueryResponse aiResponse = aiResponses != null && !aiResponses.isEmpty() ? aiResponses.get(0) : null;
 
             return ExplainQueryResponse.builder()
-                    .explanation(aiResponse.getExplanation())
+                    .explanation(aiResponse != null ? aiResponse.getExplanation() : "Basic explanation: " + sql)
                     .build();
 
         } catch (Exception e) {

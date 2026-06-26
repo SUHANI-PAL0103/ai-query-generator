@@ -6,7 +6,6 @@ import {
   Sparkles,
   History,
   Database,
-  BarChart3,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -23,7 +22,6 @@ export default function Sidebar() {
     { path: '/query-generator', label: 'Query Generator', icon: Sparkles },
     { path: '/history', label: 'Query History', icon: History },
     { path: '/schema', label: 'Database Schema', icon: Database },
-    { path: '/analytics', label: 'Analytics', icon: BarChart3 },
     { path: '/settings', label: 'Settings', icon: Settings },
     ...(isAdmin ? [{ path: '/admin', label: 'Admin Panel', icon: Shield }] : []),
   ];

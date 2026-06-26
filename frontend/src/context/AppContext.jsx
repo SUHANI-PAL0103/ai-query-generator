@@ -1,4 +1,5 @@
 import { createContext, useContext, useReducer, useEffect } from 'react';
+import { queryService } from '../services/api';
 
 const AppContext = createContext();
 
@@ -70,42 +71,38 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     const loadSchema = async () => {
-      if (!state.dbConnection) {
+      const conn = state.dbConnection;
+      if (!conn || !conn.host || !conn.username || !conn.password) {
         // User hasn't connected their database yet; skip schema fetch
         return;
       }
       try {
-        // Backend schema endpoint added by this project: GET /api/db/schema
-        const res = await fetch('/api/db/schema');
-        if (!res.ok) throw new Error(`Schema fetch failed: ${res.status}`);
-        const schema = await res.json();
-
-        dispatch({ type: 'SET_DATABASE_SCHEMA', payload: schema });
+        const result = await queryService.getDatabaseSchema();
+        if (result.success) {
+          dispatch({ type: 'SET_DATABASE_SCHEMA', payload: result.data });
+        }
       } catch (e) {
         console.warn('Could not load database schema from backend:', e);
       }
     };
     loadSchema();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [state.dbConnection]);
 
   useEffect(() => {
     const loadHistory = async () => {
-      if (!state.dbConnection) return;
+      const conn = state.dbConnection;
+      if (!conn || !conn.host || !conn.username || !conn.password) return;
       try {
-        const res = await fetch('/api/query/history');
-        if (!res.ok) return;
-        const history = await res.json();
-        if (Array.isArray(history)) {
-          dispatch({ type: 'SET_QUERY_HISTORY', payload: history });
+        const result = await queryService.getQueryHistory();
+        if (result.success && Array.isArray(result.data)) {
+          dispatch({ type: 'SET_QUERY_HISTORY', payload: result.data });
         }
       } catch (e) {
         console.warn('Could not load query history from backend:', e);
       }
     };
     loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [state.dbConnection]);
 
 
   useEffect(() => {

@@ -73,22 +73,37 @@ public class HuggingFaceAIService {
         schemaLines.add("3. If the user wants to query data, use SELECT on the existing tables listed above.");
         schemaLines.add("4. For SELECT queries, ONLY use tables and columns that exist in the schema above.");
         schemaLines.add("5. For CREATE TABLE statements, you may define new tables with any columns the user requests.");
+        schemaLines.add("6. Generate 2-3 alternative SQL queries for the same request when possible, with different approaches or optimizations.");
+        schemaLines.add("7. Assign a confidence score (0.0 to 1.0) to each query based on how well it matches the request and schema.");
         schemaLines.add("");
-        schemaLines.add("Return ONLY valid JSON:");
-        schemaLines.add("{");
-        schemaLines.add("  \"sql\": \"...\",");
-        schemaLines.add("  \"explanation\": \"...\",");
-        schemaLines.add("  \"tables\": [],");
-        schemaLines.add("  \"columns\": []");
-        schemaLines.add("}");
+        schemaLines.add("Return ONLY valid JSON array:");
+        schemaLines.add("[");
+        schemaLines.add("  {");
+        schemaLines.add("    \"sql\": \"...\",");
+        schemaLines.add("    \"explanation\": \"...\",");
+        schemaLines.add("    \"tables\": [],");
+        schemaLines.add("    \"columns\": [],");
+        schemaLines.add("    \"confidence\": 0.95");
+        schemaLines.add("  },");
+        schemaLines.add("  {");
+        schemaLines.add("    \"sql\": \"...\",");
+        schemaLines.add("    \"explanation\": \"...\",");
+        schemaLines.add("    \"tables\": [],");
+        schemaLines.add("    \"columns\": [],");
+        schemaLines.add("    \"confidence\": 0.85");
+        schemaLines.add("  }");
+        schemaLines.add("]");
 
         return String.join("\n", schemaLines);
     }
 
-    public AiQueryResponse generateSql(String prompt) {
+    public List<AiQueryResponse> generateSql(String prompt) {
 
         logger.info("Prompt: {}", prompt);
-        logger.info("API Key starts with: {}", apiKey.substring(0, Math.min(8, apiKey.length())));
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new AIServiceException("HUGGINGFACE_API_KEY is not configured");
+        }
+        logger.info("HuggingFace API key is configured");
 
         try {
             // ---------------------------
@@ -152,7 +167,7 @@ public class HuggingFaceAIService {
     // ---------------------------
     // RESPONSE PARSER
     // ---------------------------
-    private AiQueryResponse parseResponse(String responseBody) {
+    private List<AiQueryResponse> parseResponse(String responseBody) {
         try {
             JsonNode root = objectMapper.readTree(responseBody);
 
@@ -169,7 +184,7 @@ public class HuggingFaceAIService {
             }
             // Handle direct object with generated_text
             else if (root.has("generated_text")) {
-                text = root.get("generated_text").asText();
+                text = root.path("generated_text").asText();
             }
             // Fallback: use full response as text
             else {
@@ -178,7 +193,7 @@ public class HuggingFaceAIService {
 
             logger.info("AI RAW OUTPUT TEXT: {}", text);
 
-            return extractJson(text);
+            return extractJsonArray(text);
 
         } catch (Exception e) {
             throw new AIServiceException("Parse error: " + e.getMessage());
@@ -186,14 +201,37 @@ public class HuggingFaceAIService {
     }
 
     // ---------------------------
-    // EXTRACT JSON FROM TEXT
+    // EXTRACT JSON ARRAY FROM TEXT
     // ---------------------------
-    private AiQueryResponse extractJson(String text) throws JsonProcessingException {
+    private List<AiQueryResponse> extractJsonArray(String text) throws JsonProcessingException {
 
-        if (!text.contains("{") || !text.contains("}")) {
-            throw new RuntimeException("AI did not return valid JSON: " + text);
+        if (!text.contains("[") || !text.contains("]")) {
+            // Fallback: try to extract single object and wrap in list
+            if (text.contains("{") && text.contains("}")) {
+                AiQueryResponse single = extractSingleJson(text);
+                return List.of(single);
+            }
+            throw new RuntimeException("AI did not return valid JSON array: " + text);
         }
 
+        Pattern pattern = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```");
+        Matcher matcher = pattern.matcher(text);
+
+        String json;
+
+        if (matcher.find()) {
+            json = matcher.group(1);
+        } else {
+            int start = text.indexOf('[');
+            int end = text.lastIndexOf(']');
+            json = (start != -1 && end != -1) ? text.substring(start, end + 1) : text;
+        }
+
+        // Parse as array of AiQueryResponse
+        return objectMapper.readValue(json, objectMapper.getTypeFactory().constructCollectionType(List.class, AiQueryResponse.class));
+    }
+
+    private AiQueryResponse extractSingleJson(String text) throws JsonProcessingException {
         Pattern pattern = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```");
         Matcher matcher = pattern.matcher(text);
 
@@ -207,6 +245,11 @@ public class HuggingFaceAIService {
             json = (start != -1 && end != -1) ? text.substring(start, end + 1) : text;
         }
 
-        return objectMapper.readValue(json, AiQueryResponse.class);
+        AiQueryResponse response = objectMapper.readValue(json, AiQueryResponse.class);
+        // Assign default confidence if not provided
+        if (response.getConfidence() == null) {
+            response.setConfidence(0.8);
+        }
+        return response;
     }
 }

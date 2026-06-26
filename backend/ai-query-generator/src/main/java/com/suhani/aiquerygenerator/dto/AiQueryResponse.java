@@ -35,4 +35,7 @@ public class AiQueryResponse {
 
     @JsonProperty("columns")
     private List<String> columns;
+
+    @JsonProperty("confidence")
+    private Double confidence;
 }

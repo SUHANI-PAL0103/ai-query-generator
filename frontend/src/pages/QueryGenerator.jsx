@@ -30,6 +30,7 @@ export default function QueryGenerator() {
   const [selectedQuery, setSelectedQuery] = useState(null);
   const [executionResults, setExecutionResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const [showComparison, setShowComparison] = useState(false);
   const [step, setStep] = useState('input');
 
@@ -39,10 +40,16 @@ export default function QueryGenerator() {
     setGeneratedQueries([]);
     setSelectedQuery(null);
     setExecutionResults(null);
+    setError('');
     setStep('results');
 
     try {
       const response = await queryService.generateQuery(input);
+      if (!response.success) {
+        setError(response.error || 'Failed to generate query');
+        setStep('input');
+        return;
+      }
       setGeneratedQueries(response.data);
 
       dispatch({
@@ -57,6 +64,7 @@ export default function QueryGenerator() {
       });
     } catch (error) {
       console.error('Failed to generate query:', error);
+      setError(error.message || 'Failed to generate query');
     } finally {
       setIsLoading(false);
     }
@@ -67,6 +75,7 @@ export default function QueryGenerator() {
     setGeneratedQueries([]);
     setSelectedQuery(null);
     setExecutionResults(null);
+    setError('');
     setStep('input');
   };
 
@@ -78,10 +87,16 @@ export default function QueryGenerator() {
   const handleExecute = async (query) => {
     setIsLoading(true);
     setExecutionResults(null);
+    setError('');
     setStep('execution');
 
     try {
       const response = await queryService.executeQuery(query.sql);
+      if (!response.success) {
+        setError(response.error || 'Failed to execute query');
+        setStep('results');
+        return;
+      }
       // SELECT queries return data array at response.data
       // DDL/DML queries return the result object at response level
       setExecutionResults(response.data !== undefined ? response.data : response);
@@ -98,6 +113,7 @@ export default function QueryGenerator() {
       });
     } catch (error) {
       console.error('Failed to execute query:', error);
+      setError(error.message || 'Failed to execute query');
     } finally {
       setIsLoading(false);
     }
@@ -199,6 +215,12 @@ export default function QueryGenerator() {
       </motion.div>
 
       {/* Loading State */}
+      {error && (
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
       <AnimatePresence>
         {isLoading && (
           <motion.div

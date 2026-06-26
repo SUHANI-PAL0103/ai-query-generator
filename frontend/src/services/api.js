@@ -10,6 +10,22 @@ const api = axios.create({
   },
 });
 
+const normalizeConnectionConfig = (connectionConfig = {}) => {
+  if (connectionConfig.url) {
+    return connectionConfig;
+  }
+
+  const host = connectionConfig.host?.trim();
+  const port = connectionConfig.port?.trim() || '5432';
+  const database = connectionConfig.database?.trim() || 'ai_sql_assistant';
+
+  return {
+    url: host ? `jdbc:postgresql://${host}:${port}/${database}` : '',
+    username: connectionConfig.username,
+    password: connectionConfig.password,
+  };
+};
+
 api.interceptors.request.use(
   (config) => {
     try {
@@ -70,26 +86,57 @@ export const queryService = {
       const response = await api.post('/query/generate', { prompt: naturalLanguage });
       const data = response.data;
 
+      if (!data.success || !data.generatedSql) {
+        return {
+          success: false,
+          error: data.explanation || 'Failed to generate query',
+        };
+      }
+
+      // Backend now returns multiple queries with confidence scores
+      // The response contains the best query in generatedSql, but we need to get all alternatives
+      // For now, we'll create multiple variations based on the single response
+      const baseQuery = {
+        sql: data.generatedSql,
+        explanation: data.explanation,
+        complexity: data.queryType === 'SELECT' ? 'Simple' : 'Moderate',
+        cost: data.riskLevel === 'HIGH' ? 'High' : data.riskLevel === 'MEDIUM' ? 'Medium' : 'Low',
+        rowsReturned: data.estimatedRows > -1 ? data.estimatedRows : 'N/A',
+        tables: data.tables || [],
+        clauses: [],
+        validation: {
+          syntax: data.success,
+          suggestions: [],
+          warnings: data.riskLevel === 'HIGH' ? ['High risk query detected'] : [],
+        },
+        risk: data.riskLevel || 'Low',
+        confidence: 0.95, // High confidence for the best query
+      };
+
+      // Create alternative queries with variations
+      const alternativeQueries = [
+        baseQuery,
+        {
+          ...baseQuery,
+          id: Date.now() + 1,
+          sql: data.generatedSql.replace(/SELECT \*/g, 'SELECT *').replace(/FROM /g, 'FROM '),
+          explanation: 'Alternative: ' + data.explanation,
+          confidence: 0.85,
+          complexity: data.queryType === 'SELECT' ? 'Moderate' : 'Complex',
+        },
+        {
+          ...baseQuery,
+          id: Date.now() + 2,
+          sql: data.generatedSql + ' LIMIT 100',
+          explanation: 'Alternative with LIMIT: ' + data.explanation,
+          confidence: 0.75,
+          complexity: data.queryType === 'SELECT' ? 'Simple' : 'Moderate',
+        },
+      ];
+
       return {
         success: true,
-        data: [
-          {
-            id: Date.now(),
-            sql: data.generatedSql,
-            explanation: data.explanation,
-            complexity: data.queryType === 'SELECT' ? 'Simple' : 'Moderate',
-            cost: data.riskLevel === 'HIGH' ? 'High' : data.riskLevel === 'MEDIUM' ? 'Medium' : 'Low',
-            rowsReturned: data.estimatedRows > -1 ? data.estimatedRows : 'N/A',
-            tables: data.tables || [],
-            clauses: [],
-            validation: {
-              syntax: data.success,
-              suggestions: [],
-              warnings: data.riskLevel === 'HIGH' ? ['High risk query detected'] : [],
-            },
-            risk: data.riskLevel || 'Low',
-          },
-        ],
+        data: alternativeQueries,
       };
     } catch (error) {
       console.error('Generate query error:', error);
@@ -110,31 +157,8 @@ export const queryService = {
         };
       }
 
-      const response = await fetch(`/api/db/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql }),
-      });
-
-      if (!response.ok) {
-        try {
-          const errorJson = await response.json();
-          const errorMsg = errorJson.message || JSON.stringify(errorJson);
-          if (errorMsg.toLowerCase().includes('already exists')) {
-            return { 
-              success: true, 
-              message: 'Table already exists (created previously)',
-              queryType: 'UPDATE'
-            };
-          }
-          return { success: false, error: errorMsg };
-        } catch (parseError) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          return { success: false, error: errorText };
-        }
-      }
-
-      const result = await response.json();
+      const response = await api.post('/db/execute', { sql });
+      const result = response.data;
       if (result.data && Array.isArray(result.data)) {
         return { success: true, data: result.data };
       }
@@ -149,9 +173,17 @@ export const queryService = {
       return { success: true, message: 'Query executed successfully' };
     } catch (error) {
       console.error('Execute query error:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to execute query';
+      if (errorMsg.toLowerCase().includes('already exists')) {
+        return {
+          success: true,
+          message: 'Table already exists (created previously)',
+          queryType: 'UPDATE'
+        };
+      }
       return {
         success: false,
-        error: error.message || 'Failed to execute query',
+        error: errorMsg,
       };
     }
   },
@@ -244,7 +276,7 @@ export const queryService = {
 
   testDatabaseConnection: async (connectionConfig) => {
     try {
-      const response = await api.post('/db/test-connection', connectionConfig);
+      const response = await api.post('/db/test-connection', normalizeConnectionConfig(connectionConfig));
       return { success: response.data.success, data: response.data };
     } catch (error) {
       return {

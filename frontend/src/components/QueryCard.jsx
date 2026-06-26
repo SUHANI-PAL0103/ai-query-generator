@@ -13,6 +13,7 @@ import {
   Table,
   AlertTriangle,
   Activity,
+  TrendingUp,
 } from 'lucide-react';
 
 export default function QueryCard({ query, onSelect, onExecute, isSelected }) {
@@ -69,6 +70,19 @@ export default function QueryCard({ query, onSelect, onExecute, isSelected }) {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* Confidence Score */}
+            {query.confidence !== undefined && (
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
+                query.confidence >= 0.9
+                  ? 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/20'
+                  : query.confidence >= 0.7
+                  ? 'bg-yellow-100 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-200 dark:border-yellow-500/20'
+                  : 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20'
+              }`}>
+                <TrendingUp className="w-3.5 h-3.5" />
+                {(query.confidence * 100).toFixed(0)}% confidence
+              </span>
+            )}
             {/* Risk Badge */}
             <span
               className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full border ${riskColors[query.risk] || riskColors.Low}`}

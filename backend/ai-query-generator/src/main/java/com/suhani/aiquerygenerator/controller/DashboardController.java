@@ -2,6 +2,7 @@ package com.suhani.aiquerygenerator.controller;
 
 import com.suhani.aiquerygenerator.entity.QueryHistory;
 import com.suhani.aiquerygenerator.repository.QueryHistoryRepository;
+import com.suhani.aiquerygenerator.util.DynamicJdbcTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -27,11 +28,14 @@ public class DashboardController {
 
     private final QueryHistoryRepository queryHistoryRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final DynamicJdbcTemplate dynamicJdbcTemplate;
 
     public DashboardController(QueryHistoryRepository queryHistoryRepository,
-                               JdbcTemplate jdbcTemplate) {
+                               JdbcTemplate jdbcTemplate,
+                               DynamicJdbcTemplate dynamicJdbcTemplate) {
         this.queryHistoryRepository = queryHistoryRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.dynamicJdbcTemplate = dynamicJdbcTemplate;
     }
 
     /**
@@ -65,7 +69,15 @@ public class DashboardController {
             stats.put("savedQueries", savedQueries);
 
             // Average execution time (from database if tracked)
-            Double avgExecTime = queryHistoryRepository.findAverageExecutionTime();
+            List<QueryHistory> execTimeRecords = queryHistoryRepository.findByExecutionTimeMsIsNotNull();
+            Double avgExecTime = null;
+            if (!execTimeRecords.isEmpty()) {
+                double sum = execTimeRecords.stream()
+                    .mapToLong(QueryHistory::getExecutionTimeMs)
+                    .average()
+                    .orElse(0.0);
+                avgExecTime = sum / 1000.0; // Convert ms to seconds
+            }
             stats.put("avgExecutionTime", avgExecTime != null ? String.format("%.1fs", avgExecTime) : "N/A");
 
             // Recent activity count (last 24 hours)
@@ -74,20 +86,20 @@ public class DashboardController {
             stats.put("recentActivityCount", recentCount);
 
             // Query type distribution from history
-            List<Object[]> typeCounts = queryHistoryRepository.countByQueryType();
-            Map<String, Long> typeDistribution = typeCounts.stream()
-                .collect(Collectors.toMap(
-                    arr -> (String) arr[0],
-                    arr -> (Long) arr[1]
+            List<QueryHistory> allTypes = queryHistoryRepository.findAllQueryTypes();
+            Map<String, Long> typeDistribution = allTypes.stream()
+                .collect(Collectors.groupingBy(
+                    QueryHistory::getQueryType,
+                    Collectors.counting()
                 ));
             stats.put("queryTypeDistribution", typeDistribution);
 
             // Risk level distribution
-            List<Object[]> riskCounts = queryHistoryRepository.countByRiskLevel();
-            Map<String, Long> riskDistribution = riskCounts.stream()
-                .collect(Collectors.toMap(
-                    arr -> (String) arr[0],
-                    arr -> (Long) arr[1]
+            List<QueryHistory> allRiskLevels = queryHistoryRepository.findAllRiskLevels();
+            Map<String, Long> riskDistribution = allRiskLevels.stream()
+                .collect(Collectors.groupingBy(
+                    QueryHistory::getRiskLevel,
+                    Collectors.counting()
                 ));
             stats.put("riskDistribution", riskDistribution);
 
@@ -106,9 +118,8 @@ public class DashboardController {
             return ResponseEntity.ok(stats);
 
         } catch (Exception e) {
-            logger.error("Error fetching dashboard stats: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "Failed to fetch dashboard stats: " + e.getMessage()));
+            logger.warn("Dashboard history stats unavailable: {}", e.getMessage());
+            return ResponseEntity.ok(emptyStats());
         }
     }
 
@@ -137,9 +148,8 @@ public class DashboardController {
             return ResponseEntity.ok(activity);
 
         } catch (Exception e) {
-            logger.error("Error fetching recent activity: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Collections.emptyList());
+            logger.warn("Recent activity unavailable: {}", e.getMessage());
+            return ResponseEntity.ok(Collections.emptyList());
         }
     }
 
@@ -149,8 +159,12 @@ public class DashboardController {
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> getHealth() {
         try {
+            JdbcTemplate connectedJdbcTemplate = dynamicJdbcTemplate.create();
+            if (connectedJdbcTemplate == null) {
+                throw new IllegalStateException("No database connection. Please connect your database first.");
+            }
             // Simple query to test connection
-            Integer result = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
+            Integer result = connectedJdbcTemplate.queryForObject("SELECT 1", Integer.class);
             
             Map<String, Object> health = new LinkedHashMap<>();
             health.put("status", "healthy");
@@ -177,10 +191,14 @@ public class DashboardController {
     @GetMapping("/database-info")
     public ResponseEntity<Map<String, Object>> getDatabaseInfo() {
         try {
+            JdbcTemplate connectedJdbcTemplate = dynamicJdbcTemplate.create();
+            if (connectedJdbcTemplate == null) {
+                throw new IllegalStateException("No database connection. Please connect your database first.");
+            }
             Map<String, Object> info = new LinkedHashMap<>();
 
             // Get table count
-            Long tableCount = jdbcTemplate.queryForObject(
+            Long tableCount = connectedJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
                 Long.class
             );
@@ -188,7 +206,7 @@ public class DashboardController {
 
             // Get database size
             try {
-                Long dbSize = jdbcTemplate.queryForObject(
+                Long dbSize = connectedJdbcTemplate.queryForObject(
                     "SELECT pg_database_size(current_database())",
                     Long.class
                 );
@@ -200,9 +218,9 @@ public class DashboardController {
 
             // Get connection info
             try {
-                String currentUser = jdbcTemplate.queryForObject("SELECT current_user", String.class);
-                String currentDatabase = jdbcTemplate.queryForObject("SELECT current_database()", String.class);
-                String currentSchema = jdbcTemplate.queryForObject("SELECT current_schema()", String.class);
+                String currentUser = connectedJdbcTemplate.queryForObject("SELECT current_user", String.class);
+                String currentDatabase = connectedJdbcTemplate.queryForObject("SELECT current_database()", String.class);
+                String currentSchema = connectedJdbcTemplate.queryForObject("SELECT current_schema()", String.class);
                 info.put("currentUser", currentUser);
                 info.put("currentDatabase", currentDatabase);
                 info.put("currentSchema", currentSchema);
@@ -242,5 +260,26 @@ public class DashboardController {
         if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
         if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
         return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
+    }
+
+    private Map<String, Object> emptyStats() {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("totalQueries", 0);
+        stats.put("successfulExecutions", 0);
+        stats.put("failedExecutions", 0);
+        stats.put("successRate", 0);
+        stats.put("savedQueries", 0);
+        stats.put("avgExecutionTime", "N/A");
+        stats.put("recentActivityCount", 0);
+        stats.put("queryTypeDistribution", Collections.emptyMap());
+        stats.put("riskDistribution", Collections.emptyMap());
+
+        Map<String, Long> trendData = new LinkedHashMap<>();
+        for (int i = 6; i >= 0; i--) {
+            LocalDateTime dayStart = LocalDateTime.now().minusDays(i).toLocalDate().atStartOfDay();
+            trendData.put(dayStart.toLocalDate().toString().substring(5), 0L);
+        }
+        stats.put("trendData", trendData);
+        return stats;
     }
 }

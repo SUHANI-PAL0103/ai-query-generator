@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
 import java.util.List;
 
 @RestController
@@ -37,16 +38,19 @@ public class QueryController {
             @RequestHeader(value = "X-Clerk-User-Id", required = false) String clerkId) {
         logger.info("Received generate query request from user: {}", clerkId);
         GenerateQueryResponse response = queryService.generateQuery(request.getPrompt());
-        if (clerkId != null && !clerkId.isEmpty()) {
-            // Save with user tracking
-            queryService.saveHistoryForUser(
-                request.getPrompt(),
-                response.getGeneratedSql(),
-                response.getExplanation(),
-                response.getQueryType(),
-                response.getRiskLevel(),
-                clerkId
-            );
+        if (response.isSuccess() && clerkId != null && !clerkId.isEmpty()) {
+            try {
+                queryService.saveHistoryForUser(
+                    request.getPrompt(),
+                    response.getGeneratedSql(),
+                    response.getExplanation(),
+                    response.getQueryType(),
+                    response.getRiskLevel(),
+                    clerkId
+                );
+            } catch (Exception e) {
+                logger.warn("Could not save user query history: {}", e.getMessage());
+            }
         }
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }
@@ -79,12 +83,17 @@ public class QueryController {
     public ResponseEntity<List<QueryHistoryResponse>> getQueryHistory(
             @RequestHeader(value = "X-Clerk-User-Id", required = false) String clerkId) {
         logger.info("Received query history request for user: {}", clerkId);
-        List<QueryHistoryResponse> history;
-        if (clerkId != null && !clerkId.isEmpty()) {
-            history = queryService.getQueryHistoryForUser(clerkId);
-        } else {
-            history = queryService.getQueryHistory();
+        try {
+            List<QueryHistoryResponse> history;
+            if (clerkId != null && !clerkId.isEmpty()) {
+                history = queryService.getQueryHistoryForUser(clerkId);
+            } else {
+                history = queryService.getQueryHistory();
+            }
+            return ResponseEntity.status(HttpStatus.OK).body(history);
+        } catch (Exception e) {
+            logger.warn("Could not load query history: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.OK).body(Collections.emptyList());
         }
-        return ResponseEntity.status(HttpStatus.OK).body(history);
     }
 }

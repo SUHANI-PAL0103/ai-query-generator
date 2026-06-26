@@ -1,9 +1,8 @@
 package com.suhani.aiquerygenerator.repository;
 
 import com.suhani.aiquerygenerator.entity.QueryHistory;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.jpa.repository.query.Procedure;
+import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -12,13 +11,13 @@ import java.util.List;
 /**
  * Repository interface for QueryHistory entity.
  * Provides database operations for storing and retrieving query history records.
- * Extends JpaRepository to inherit standard CRUD operations.
+ * Extends MongoRepository to inherit standard CRUD operations for MongoDB.
  *
  * @author Suhani Pal
  * @version 1.0.0
  */
 @Repository
-public interface QueryHistoryRepository extends JpaRepository<QueryHistory, Long> {
+public interface QueryHistoryRepository extends MongoRepository<QueryHistory, String> {
 
     /**
      * Retrieves all query history records ordered by creation date descending.
@@ -51,22 +50,22 @@ public interface QueryHistoryRepository extends JpaRepository<QueryHistory, Long
     long countByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
 
     /**
-     * Count queries grouped by query type.
+     * Count queries grouped by query type - returns list of [queryType, count] pairs.
      */
-    @Query("SELECT q.queryType, COUNT(q) FROM QueryHistory q GROUP BY q.queryType")
-    List<Object[]> countByQueryType();
+    @Query(value = "{}", fields = "{ 'query_type': 1 }")
+    List<QueryHistory> findAllQueryTypes();
 
     /**
-     * Count queries grouped by risk level.
+     * Count queries grouped by risk level - returns list of [riskLevel, count] pairs.
      */
-    @Query("SELECT q.riskLevel, COUNT(q) FROM QueryHistory q GROUP BY q.riskLevel")
-    List<Object[]> countByRiskLevel();
+    @Query(value = "{}", fields = "{ 'risk_level': 1 }")
+    List<QueryHistory> findAllRiskLevels();
 
     /**
      * Find average execution time from history.
      */
-    @Query("SELECT AVG(q.executionTimeMs) FROM QueryHistory q WHERE q.executionTimeMs IS NOT NULL")
-    Double findAverageExecutionTime();
+    @Query(value = "{ 'execution_time_ms': { $ne: null } }", fields = "{ 'execution_time_ms': 1 }")
+    List<QueryHistory> findByExecutionTimeMsIsNotNull();
 
     /**
      * Get top 10 recent records ordered by creation date descending.

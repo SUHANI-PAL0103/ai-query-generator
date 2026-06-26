@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import com.suhani.aiquerygenerator.util.DynamicJdbcTemplate;
 
 import java.util.List;
 import java.util.regex.Matcher;
@@ -14,10 +15,18 @@ public class DatabaseValidationService {
 
     private static final Logger logger = LoggerFactory.getLogger(DatabaseValidationService.class);
 
-    private final JdbcTemplate jdbcTemplate;
+    private final DynamicJdbcTemplate dynamicJdbcTemplate;
 
-    public DatabaseValidationService(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public DatabaseValidationService(DynamicJdbcTemplate dynamicJdbcTemplate) {
+        this.dynamicJdbcTemplate = dynamicJdbcTemplate;
+    }
+
+    private JdbcTemplate getJdbcTemplate() {
+        JdbcTemplate jdbcTemplate = dynamicJdbcTemplate.create();
+        if (jdbcTemplate == null) {
+            throw new IllegalStateException("No database connection available. Please connect your database first.");
+        }
+        return jdbcTemplate;
     }
 
     /**
@@ -33,6 +42,13 @@ public class DatabaseValidationService {
         }
 
         String trimmed = sql.trim().toUpperCase();
+        JdbcTemplate jdbcTemplate;
+        try {
+            jdbcTemplate = getJdbcTemplate();
+        } catch (Exception e) {
+            logger.warn("SQL validation skipped: {}", e.getMessage());
+            return false;
+        }
 
         // For SELECT queries, use EXPLAIN to validate safely
         if (trimmed.startsWith("SELECT")) {
@@ -91,6 +107,7 @@ public class DatabaseValidationService {
         }
 
         try {
+            JdbcTemplate jdbcTemplate = getJdbcTemplate();
             List<String> explainOutput = jdbcTemplate.query(
                     "EXPLAIN " + sql,
                     (rs, rowNum) -> rs.getString("QUERY PLAN")
@@ -118,6 +135,7 @@ public class DatabaseValidationService {
      */
     public List<String> getRealTables() {
         try {
+            JdbcTemplate jdbcTemplate = getJdbcTemplate();
             // Only return application tables from the connected database.
             // Avoid system/extension tables if they exist in the same schema.
             return jdbcTemplate.query(
@@ -139,6 +157,7 @@ public class DatabaseValidationService {
      */
     public List<String> getRealColumns(String tableName) {
         try {
+            JdbcTemplate jdbcTemplate = getJdbcTemplate();
             return jdbcTemplate.query(
                     "SELECT column_name FROM information_schema.columns " +
                     "WHERE table_schema = 'public' AND table_name = ? ORDER BY ordinal_position",
