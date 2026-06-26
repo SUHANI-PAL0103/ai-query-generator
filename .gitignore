@@ -3,9 +3,10 @@
 .env
 .env.*.local
 
-# Backend configuration with credentials
-backend/ai-query-generator/src/main/resources/application.properties
+# Backend configuration - use .env files for actual secrets
+# application.properties only has placeholder env vars now
 backend/ai-query-generator/src/main/resources/application.properties.example
+.venv
 
 # Dependencies
 node_modules/
