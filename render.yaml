@@ -1,12 +1,11 @@
 services:
   - type: web
     name: ai-query-generator
-    env: java
+    env: docker
+    dockerfilePath: ./backend/ai-query-generator/Dockerfile
     region: singapore
     plan: free
     branch: main
-    buildCommand: cd backend/ai-query-generator && chmod +x mvnw && ./mvnw clean package -DskipTests
-    startCommand: cd backend/ai-query-generator && java -Dserver.port=$PORT -jar target/ai-query-generator-1.0.0.jar
     healthCheckPath: /api/db/schema
     envVars:
       - key: HUGGINGFACE_API_KEY
